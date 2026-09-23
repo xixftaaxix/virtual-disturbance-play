@@ -94,36 +94,31 @@
         function onCanvas(x, y) {
           return turn === 90 ? [y, width - x] : [height - y, x];
         }
-        // Positions are read through the browser's own getters, so a touch object seen twice is never turned twice.
-        function getter(proto, name) {
-          var d = Object.getOwnPropertyDescriptor(proto, name);
-          return d && d.get;
-        }
-        var mouse = {}, touch = {};
-        ['clientX', 'clientY', 'pageX', 'pageY', 'offsetX', 'offsetY', 'x', 'y'].forEach(function (n) { mouse[n] = getter(MouseEvent.prototype, n); });
-        if (window.Touch) ['clientX', 'clientY', 'pageX', 'pageY'].forEach(function (n) { touch[n] = getter(Touch.prototype, n); });
-        function place(target, getters, keys) {
-          var p = onCanvas(getters.clientX.call(target), getters.clientY.call(target));
-          keys.forEach(function (k) {
-            var i = k[k.length - 1] === 'X' || k === 'x' ? 0 : 1;
-            Object.defineProperty(target, k, { value: p[i], configurable: true });
+        // Every position a touch, a click or a pointer reports is turned to match, by replacing the browser's own position
+        // readers while the game is turned: each reads the real position and turns it. Rewriting the positions on each
+        // event instead worked in Chrome but not on an iPhone, where the stick jumped to the top left and a sideways
+        // swipe only tilted the camera (the user, 2026-09-23). The canvas is measured at the top left (below), so page
+        // and offset positions are the same as client ones.
+        function turnReaders(proto, pairs) {
+          var cx = Object.getOwnPropertyDescriptor(proto, 'clientX');
+          var cy = Object.getOwnPropertyDescriptor(proto, 'clientY');
+          if (!cx || !cy || !cx.get || !cy.get) return;
+          pairs.forEach(function (pair) {
+            [0, 1].forEach(function (i) {
+              var d = Object.getOwnPropertyDescriptor(proto, pair[i]);
+              if (!d || !d.get || !d.configurable) return;
+              Object.defineProperty(proto, pair[i], {
+                configurable: true, enumerable: d.enumerable,
+                get: function () {
+                  if (!turn) return d.get.call(this);
+                  return onCanvas(cx.get.call(this), cy.get.call(this))[i];
+                }
+              });
+            });
           });
         }
-        function turnEvent(e) {
-          if (!turn) return;
-          if (e.touches !== undefined) {
-            [e.touches, e.targetTouches, e.changedTouches].forEach(function (list) {
-              if (!list) return;
-              for (var i = 0; i < list.length; i++) if (touch.clientX) place(list[i], touch, ['clientX', 'clientY', 'pageX', 'pageY']);
-            });
-          } else if (mouse.clientX) {
-            place(e, mouse, ['clientX', 'clientY', 'pageX', 'pageY', 'offsetX', 'offsetY', 'x', 'y']);
-          }
-        }
-        // On the window, before the canvas (where Unity listens) sees them.
-        ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'click',
-         'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerover', 'pointerout', 'pointerenter', 'pointerleave']
-          .forEach(function (type) { window.addEventListener(type, turnEvent, { capture: true, passive: true }); });
+        if (window.Touch) turnReaders(Touch.prototype, [['clientX', 'clientY'], ['pageX', 'pageY']]);
+        turnReaders(MouseEvent.prototype, [['clientX', 'clientY'], ['pageX', 'pageY'], ['offsetX', 'offsetY'], ['x', 'y']]);
         // And Unity measures the canvas as it is before turning: at the top left, sideways.
         var measure = Element.prototype.getBoundingClientRect;
         HTMLCanvasElement.prototype.getBoundingClientRect = function () {
