@@ -30,6 +30,16 @@
       html.vd-mobile #unity-fullscreen-container { position: absolute; left: 0; top: 0; width: 100% !important; height: 100% !important; }
       html.vd-mobile #unity-canvas { display: block; width: 100%; height: 100%; background: #000; touch-action: none; outline: none; }
       html.vd-mobile #unity-footer { display: none; }
+      /* Sideways with rotation lock on (the user, 2026-09-23, wanted to leave rotation lock on). Safari still
+         lays the page out upright, so the canvas is laid out sideways, as long as the screen is tall and as tall as it is
+         wide, and turned a quarter to fill it: clockwise for a phone turned with its top to the left, the other way for
+         the top to the right. The page script turns touches back to match. */
+      html.vd-mobile.vd-rotated #unity-canvas {
+        position: absolute; left: 0; top: 0; width: var(--vd-long) !important; height: var(--vd-short) !important;
+        transform-origin: 0 0;
+      }
+      html.vd-mobile.vd-rotated.vd-top-left #unity-canvas { transform: rotate(90deg) translateY(-100%); }
+      html.vd-mobile.vd-rotated.vd-top-right #unity-canvas { transform: rotate(-90deg) translateX(-100%); }
       html.vd-mobile #unity-warning { position: fixed; z-index: 10; }
     </style>
     <script>
@@ -51,6 +61,76 @@
         // the quick-second-tap guard is kept off the canvas: there it would drop the browser's pretend mouse clicks from
         // every other fast tap on a button.
         document.addEventListener('dblclick', block, { passive: false });
+
+        // ---- Sideways with rotation lock on ----
+        // Which way the phone is held: its top to the left (the default) or to the right. The game's pause menu changes it
+        // (window.vdSetSideways), and it's remembered here too so the page starts the right way round.
+        var side = 'left';
+        try { side = localStorage.getItem('vd-sideways') || 'left'; } catch (e) {}
+        var turn = 0, width = 0, height = 0;
+        function layout() {
+          var view = window.visualViewport;
+          width = view ? Math.round(view.width) : window.innerWidth;
+          height = view ? Math.round(view.height) : window.innerHeight;
+          var upright = height > width;
+          turn = upright ? (side === 'right' ? -90 : 90) : 0;
+          root.classList.toggle('vd-rotated', upright);
+          root.classList.toggle('vd-top-left', side !== 'right');
+          root.classList.toggle('vd-top-right', side === 'right');
+          root.style.setProperty('--vd-long', Math.max(width, height) + 'px');
+          root.style.setProperty('--vd-short', Math.min(width, height) + 'px');
+        }
+        window.vdSetSideways = function (which) {
+          side = which === 'right' ? 'right' : 'left';
+          try { localStorage.setItem('vd-sideways', side); } catch (e) {}
+          layout();
+        };
+        layout();
+        window.addEventListener('resize', layout);
+        window.addEventListener('orientationchange', function () { setTimeout(layout, 300); });
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
+
+        // Where a point on the screen is on the turned canvas, as if the canvas sat unturned at the top left.
+        function onCanvas(x, y) {
+          return turn === 90 ? [y, width - x] : [height - y, x];
+        }
+        // Positions are read through the browser's own getters, so a touch object seen twice is never turned twice.
+        function getter(proto, name) {
+          var d = Object.getOwnPropertyDescriptor(proto, name);
+          return d && d.get;
+        }
+        var mouse = {}, touch = {};
+        ['clientX', 'clientY', 'pageX', 'pageY', 'offsetX', 'offsetY', 'x', 'y'].forEach(function (n) { mouse[n] = getter(MouseEvent.prototype, n); });
+        if (window.Touch) ['clientX', 'clientY', 'pageX', 'pageY'].forEach(function (n) { touch[n] = getter(Touch.prototype, n); });
+        function place(target, getters, keys) {
+          var p = onCanvas(getters.clientX.call(target), getters.clientY.call(target));
+          keys.forEach(function (k) {
+            var i = k[k.length - 1] === 'X' || k === 'x' ? 0 : 1;
+            Object.defineProperty(target, k, { value: p[i], configurable: true });
+          });
+        }
+        function turnEvent(e) {
+          if (!turn) return;
+          if (e.touches !== undefined) {
+            [e.touches, e.targetTouches, e.changedTouches].forEach(function (list) {
+              if (!list) return;
+              for (var i = 0; i < list.length; i++) if (touch.clientX) place(list[i], touch, ['clientX', 'clientY', 'pageX', 'pageY']);
+            });
+          } else if (mouse.clientX) {
+            place(e, mouse, ['clientX', 'clientY', 'pageX', 'pageY', 'offsetX', 'offsetY', 'x', 'y']);
+          }
+        }
+        // On the window, before the canvas (where Unity listens) sees them.
+        ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'click',
+         'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerover', 'pointerout', 'pointerenter', 'pointerleave']
+          .forEach(function (type) { window.addEventListener(type, turnEvent, { capture: true, passive: true }); });
+        // And Unity measures the canvas as it is before turning: at the top left, sideways.
+        var measure = Element.prototype.getBoundingClientRect;
+        HTMLCanvasElement.prototype.getBoundingClientRect = function () {
+          if (!turn || this.id !== 'unity-canvas') return measure.call(this);
+          var w = this.clientWidth, h = this.clientHeight;
+          return { left: 0, top: 0, right: w, bottom: h, width: w, height: h, x: 0, y: 0, toJSON: function () { return this; } };
+        };
         document.addEventListener('contextmenu', block);
         var lastTouchEnd = 0;
         document.addEventListener('touchend', function (e) {
