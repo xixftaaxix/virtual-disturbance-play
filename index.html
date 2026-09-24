@@ -6,72 +6,6 @@
     <title>Unity Web Player | Virtual Disturbance</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
-  <!-- Virtual Disturbance phone page -->
-    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=yes, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <style>
-      /* Phones: the canvas fills the screen on black, and the browser keeps its hands off touches. The game is pinned to
-         all four edges of the window rather than given a height: on an iPhone held sideways 100dvh came out shorter than
-         the screen and left a black band along the bottom (the user's screenshot, 2026-09-23). Pinned, a rotation or
-         Safari's bars coming and going resizes the canvas and Unity follows. */
-      html.vd-mobile, html.vd-mobile body {
-        margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000;
-        overscroll-behavior: none; touch-action: none;
-        -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
-        -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
-      }
-      html.vd-mobile body { position: fixed; left: 0; top: 0; right: 0; bottom: 0; }
-      html.vd-mobile #unity-container {
-        position: fixed !important; transform: none !important; margin: 0; width: auto !important; height: auto !important;
-        /* Inside the safe area, clear of the Dynamic Island and the home bar. Pinned to the whole screen, the game ran
-           under the island at one end and stopped short of the other, leaving a black bar (the user, 2026-09-23). */
-        left: env(safe-area-inset-left, 0px) !important; right: env(safe-area-inset-right, 0px) !important;
-        top: env(safe-area-inset-top, 0px) !important; bottom: env(safe-area-inset-bottom, 0px) !important;
-      }
-      html.vd-mobile #unity-fullscreen-container { position: absolute; left: 0; top: 0; width: 100% !important; height: 100% !important; }
-      html.vd-mobile #unity-canvas { display: block; width: 100%; height: 100%; background: #000; touch-action: none; outline: none; }
-      html.vd-mobile #unity-footer { display: none; }
-      html.vd-mobile #unity-warning { position: fixed; z-index: 10; }
-    </style>
-    <script>
-      (function () {
-        var ua = navigator.userAgent;
-        var mobile = /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-        window.vdIsMobile = mobile;
-        if (!mobile) return;
-        var root = document.documentElement;
-        root.classList.add('vd-mobile');
-        function block(e) { e.preventDefault(); }
-        // Pinch zoom (Safari's own gesture events) and page scrolling or rubber-banding. Only the browser's default is
-        // stopped: Unity listens on the canvas, which gets every touch first, and nothing stops the event reaching it.
-        document.addEventListener('gesturestart', block, { passive: false });
-        document.addEventListener('gesturechange', block, { passive: false });
-        document.addEventListener('gestureend', block, { passive: false });
-        document.addEventListener('touchmove', block, { passive: false });
-        // Double-tap zoom and the long-press menu. touch-action: none already stops double-tap zoom on the canvas, so
-        // the quick-second-tap guard is kept off the canvas: there it would drop the browser's pretend mouse clicks from
-        // every other fast tap on a button.
-        document.addEventListener('dblclick', block, { passive: false });
-
-        // A swipe in from the left or right edge is Safari going back or forward a page, out of the game. A touch starting in the
-        // outermost strip has the browser's part stopped; the game still gets it (the canvas hears a touch before the page
-        // does). This works in Safari; Chrome on an iPhone may still go back. Phone round 1, 2026-09-23.
-        document.addEventListener('touchstart', function (e) {
-          var t = e.touches && e.touches[0];
-          if (t && (t.clientX < 24 || t.clientX > window.innerWidth - 24)) e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('contextmenu', block);
-        var lastTouchEnd = 0;
-        document.addEventListener('touchend', function (e) {
-          var now = Date.now();
-          if (now - lastTouchEnd < 300 && !(e.target && e.target.id == 'unity-canvas')) e.preventDefault();
-          lastTouchEnd = now;
-        }, { passive: false });
-      })();
-    </script>
   </head>
   <body>
     <div id="unity-container" class="unity-desktop">
@@ -104,7 +38,6 @@
       // way that non-critical warnings and error messages are presented to the
       // user.
       function unityShowBanner(msg, type) {
-        if (window.vdIsMobile && type != 'error') { console.warn(msg); return; }
         var warningBanner = document.querySelector("#unity-warning");
         function updateBannerVisibility() {
           warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
@@ -165,19 +98,19 @@
       // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
       // expected to change.
 
-      if (window.vdIsMobile || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         // Mobile device style: fill the whole browser client area with the game canvas:
 
         var meta = document.createElement('meta');
         meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=yes, viewport-fit=cover';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
         document.getElementsByTagName('head')[0].appendChild(meta);
         document.querySelector("#unity-container").className = "unity-mobile";
         canvas.className = "unity-mobile";
 
         // To lower canvas resolution on mobile devices to gain some
         // performance, uncomment the following line:
-        config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        // config.devicePixelRatio = 1;
 
 
       } else {
