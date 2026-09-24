@@ -55,6 +55,14 @@
         // every other fast tap on a button.
         document.addEventListener('dblclick', block, { passive: false });
 
+        // A swipe in from the left or right edge is Safari going back or forward a page, out of the game. A touch starting in the
+        // outermost strip has the browser's part stopped; the game still gets it (the canvas hears a touch before the page
+        // does). This works in Safari; Chrome on an iPhone may still go back. Phone round 1, 2026-09-23.
+        document.addEventListener('touchstart', function (e) {
+          var t = e.touches && e.touches[0];
+          if (t && (t.clientX < 24 || t.clientX > window.innerWidth - 24)) e.preventDefault();
+        }, { passive: false });
+
         document.addEventListener('contextmenu', block);
         var lastTouchEnd = 0;
         document.addEventListener('touchend', function (e) {
